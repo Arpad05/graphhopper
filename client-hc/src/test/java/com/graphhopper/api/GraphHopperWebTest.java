@@ -5,20 +5,28 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.graphhopper.GHRequest;
+
 import com.graphhopper.jackson.Jackson;
 import com.graphhopper.json.Statement;
 import com.graphhopper.util.CustomModel;
 import com.graphhopper.util.JsonFeature;
 import com.graphhopper.util.JsonFeatureCollection;
 import com.graphhopper.util.shapes.GHPoint;
+import io.restassured.RestAssured;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.locationtech.jts.geom.Coordinate;
 import org.locationtech.jts.geom.GeometryFactory;
 
+import static org.hamcrest.Matchers.*;
+import static io.restassured.RestAssured.*;
+
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.List;
 
 import static com.graphhopper.json.Statement.If;
 import static org.junit.jupiter.api.Assertions.*;
@@ -119,4 +127,72 @@ public class GraphHopperWebTest {
         CustomModel cm = objectMapper.readValue("{\"distance_influence\":null}", CustomModel.class);
         assertNull(cm.getDistanceInfluence());
     }
+
+    @Test
+    void testCreatRequest_v1() {
+        GraphHopperWeb gh = new GraphHopperWeb("https://localhost:8000/route");
+        GHRequest requete = new GHRequest();
+        requete.addPoint(new GHPoint(47.390182, 18.976170));
+        requete.addPoint(new GHPoint(42.390182, 17.976170));
+        requete.setLocale("fr");
+
+        String url = gh.createGetRequest(requete).url().toString();
+
+        assertTrue(url.contains("locale=fr"));
+    }
+    @Test
+    void testCreatRequest_v2() {
+        GraphHopperWeb gh = new GraphHopperWeb("https://localhost:8000/route");
+        GHRequest requete = new GHRequest();
+        requete.addPoint(new GHPoint(42.509225, 1.534728));
+        requete.addPoint(new GHPoint(42.512602, 1.551558));
+
+        String url = gh.createGetRequest(requete).url().toString();
+        System.out.println("générationde  URL: " + url);
+        assertTrue(url.contains("locale=fr-CA"), "le local devrait être dans le URL");
+        assertTrue(url.matches(".*profile=my(\\+|%20)profile.*"), "le profile devrait être dans le URL");
+    }
+    @Test
+    public void TestRequeteJSon() {
+        GraphHopperWeb gh = new GraphHopperWeb("http://localhost:8000/route");
+        GHRequest req = new GHRequest(new GHPoint(42.509225, 1.534728), new GHPoint(42.512602, 1.551558))
+                .setProfile("auto");
+        JsonNode json = gh.requestToJson(req);
+
+        assertNotNull(json);
+        assertTrue(json.has("profile"), "le profile devrait être présent");
+        assertEquals("car", json.get("profile").asText());
+
+        assertTrue(json.has("points"), "les repères devraiet etre présent");
+        JsonNode points = json.get("points");
+        assertTrue(points.isArray());
+        assertEquals(2, points.size());
+
+        double lon0 = points.get(0).get(0).asDouble();
+        double lat0 = points.get(0).get(1).asDouble();
+        double lon1 = points.get(1).get(0).asDouble();
+        double lat1 = points.get(1).get(1).asDouble();
+
+        double eps = 1e-6;
+        assertEquals(42.509225, lat0, eps);
+        assertEquals(1.534728, lon0, eps);
+        assertEquals(42.512602, lat1, eps);
+        assertEquals(1.551558, lon1, eps);
+    }
+
+    @Test
+    public void testRouting() {
+        given()
+                .baseUri("http://localhost:8989")
+                .queryParam("point", "48.858844,2.294351") // exemple point A
+                .queryParam("point", "48.853,2.349")       // exemple point B
+                .queryParam("type", "json")
+                .when()
+                .get("/route")
+                .then()
+                .statusCode(200)
+                .body("paths", not(empty()))
+                .body("paths[0].distance", greaterThan(0.0f));
+    }
+
 }
