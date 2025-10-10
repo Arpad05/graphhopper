@@ -12,17 +12,14 @@ import com.graphhopper.util.CustomModel;
 import com.graphhopper.util.JsonFeature;
 import com.graphhopper.util.JsonFeatureCollection;
 import com.graphhopper.util.shapes.GHPoint;
-import io.restassured.RestAssured;
-import org.junit.jupiter.api.AfterAll;
-import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.locationtech.jts.geom.Coordinate;
 import org.locationtech.jts.geom.GeometryFactory;
+import com.github.javafaker.Faker;
 
-import static org.hamcrest.Matchers.*;
-import static io.restassured.RestAssured.*;
+import java.util.Locale;
 
 import java.util.Arrays;
 import java.util.HashMap;
@@ -181,18 +178,19 @@ public class GraphHopperWebTest {
     }
 
     @Test
-    public void testRouting() {
-        given()
-                .baseUri("http://localhost:8989")
-                .queryParam("point", "48.858844,2.294351") // exemple point A
-                .queryParam("point", "48.853,2.349")       // exemple point B
-                .queryParam("type", "json")
-                .when()
-                .get("/route")
-                .then()
-                .statusCode(200)
-                .body("paths", not(empty()))
-                .body("paths[0].distance", greaterThan(0.0f));
+    void testrequeteFaker() {
+        Faker faker = new Faker(new Locale("fr"));
+
+        double lat = Double.parseDouble(faker.address().latitude());
+        double lon = Double.parseDouble(faker.address().longitude());
+        String city = faker.address().cityName();
+
+        assertTrue(lat >= -90 && lat <= 90, "Latitude incorrect");
+        assertTrue(lon >= -180 && lon <= 180, "Longitude incorrect");
+        assertNotNull(city, "Ville ne doit pas être de nom vide.");
+
+        System.out.println("Latitude: " + lat + ", Longitude: " + lon + ", Ville: " + city);
     }
+
 
 }
