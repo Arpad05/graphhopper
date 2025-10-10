@@ -88,30 +88,41 @@
     <build>
         <plugins>
             <plugin>
-                <groupId>org.pitest</groupId>
-                <artifactId>pitest-maven</artifactId>
-                <version>1.20.5</version>
-                <configuration>
-                    <targetClasses>
-                        <param>com.graphhopper.*</param>
-                    </targetClasses>
-                    <targetTests>
-                        <param>com.graphhopper.api.*</param>
-                    </targetTests>
-                    <mutators>
-                        <mutator>DEFAULTS</mutator>
-                    </mutators>
-                    <outputFormats>
-                        <param>HTML</param>
-                    </outputFormats>
-                </configuration>
-            </plugin>
-            <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-surefire-plugin</artifactId>
                 <version>3.1.2</version>
                 <configuration>
                     <argLine>${argLine}</argLine>
+                </configuration>
+            </plugin>
+            <plugin>
+                <groupId>org.pitest</groupId>
+                <artifactId>pitest-maven</artifactId>
+                <version>1.15.0</version>
+                <dependencies>
+                    <dependency>
+                    <groupId>org.pitest</groupId>
+                    <artifactId>pitest-junit5-plugin</artifactId>
+                    <version>1.2.0</version>
+                    </dependency>
+                </dependencies>
+                <configuration>
+                    <!-- ✅ Classes de prod à muter -->
+                    <targetClasses>
+                    <param>com.graphhopper.api.*</param>
+                    </targetClasses>
+
+                    <!-- ✅ Tests associés -->
+                    <targetTests>
+                    <param>com.graphhopper.api.*Test</param>
+                    </targetTests>
+
+                    <mutators>
+                    <mutator>DEFAULTS</mutator>
+                    </mutators>
+                    <outputFormats>
+                    <param>HTML</param>
+                    </outputFormats>
                 </configuration>
             </plugin>
         </plugins>

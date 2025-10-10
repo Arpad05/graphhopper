@@ -32,4 +32,34 @@
         </dependency>
     </dependencies>
 
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.pitest</groupId>
+                <artifactId>pitest-maven</artifactId>
+                <version>1.20.6</version>
+                <dependencies>
+                    <!-- Plugin JUnit 5 obligatoire -->
+                    <dependency>
+                    <groupId>org.pitest</groupId>
+                    <artifactId>pitest-junit5-plugin</artifactId>
+                    <version>1.2.1</version>
+                    </dependency>
+                </dependencies>
+                <configuration>
+                    <targetClasses>
+                    <param>com.graphhopper.navigation.NavigateResource</param>
+                    </targetClasses>
+                    <targetTests>
+                    <param>com.graphhopper.navigation.NavigateResourceTest</param>
+                    </targetTests>
+                    <outputFormats>
+                    <param>HTML</param>
+                    </outputFormats>
+                    <verbose>true</verbose>
+                </configuration>
+                </plugin>
+ 
+        </plugins>
+    </build>
 </project>

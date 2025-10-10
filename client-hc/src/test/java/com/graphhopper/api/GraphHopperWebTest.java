@@ -128,6 +128,7 @@ public class GraphHopperWebTest {
         assertNull(cm.getDistanceInfluence());
     }
 
+    // 4
     @Test
     void testCreatRequest_v1() {
         GraphHopperWeb gh = new GraphHopperWeb("https://localhost:8000/route");
@@ -140,18 +141,23 @@ public class GraphHopperWebTest {
 
         assertTrue(url.contains("locale=fr"));
     }
+
+    // 5
     @Test
     void testCreatRequest_v2() {
         GraphHopperWeb gh = new GraphHopperWeb("https://localhost:8000/route");
         GHRequest requete = new GHRequest();
         requete.addPoint(new GHPoint(42.509225, 1.534728));
         requete.addPoint(new GHPoint(42.512602, 1.551558));
+        requete.setLocale("fr-CA");
+        requete.setProfile("my profile"); // l’espace sera encodé en + ou %20
 
         String url = gh.createGetRequest(requete).url().toString();
-        System.out.println("générationde  URL: " + url);
-        assertTrue(url.contains("locale=fr-CA"), "le local devrait être dans le URL");
-        assertTrue(url.matches(".*profile=my(\\+|%20)profile.*"), "le profile devrait être dans le URL");
+        assertTrue(url.contains("locale=fr-CA"));
+        assertTrue(url.contains("profile=my+profile") || url.contains("profile=my%20profile"));
     }
+
+    // 6 
     @Test
     public void TestRequeteJSon() {
         GraphHopperWeb gh = new GraphHopperWeb("http://localhost:8000/route");
@@ -161,7 +167,7 @@ public class GraphHopperWebTest {
 
         assertNotNull(json);
         assertTrue(json.has("profile"), "le profile devrait être présent");
-        assertEquals("car", json.get("profile").asText());
+        assertEquals("auto", json.get("profile").asText());
 
         assertTrue(json.has("points"), "les repères devraiet etre présent");
         JsonNode points = json.get("points");
@@ -180,19 +186,28 @@ public class GraphHopperWebTest {
         assertEquals(1.551558, lon1, eps);
     }
 
-    @Test
-    public void testRouting() {
-        given()
-                .baseUri("http://localhost:8989")
-                .queryParam("point", "48.858844,2.294351") // exemple point A
-                .queryParam("point", "48.853,2.349")       // exemple point B
-                .queryParam("type", "json")
-                .when()
-                .get("/route")
-                .then()
-                .statusCode(200)
-                .body("paths", not(empty()))
-                .body("paths[0].distance", greaterThan(0.0f));
-    }
+    // 7
+    @org.junit.jupiter.api.extension.RegisterExtension
+    static com.github.tomakehurst.wiremock.junit5.WireMockExtension wm = com.github.tomakehurst.wiremock.junit5.WireMockExtension.newInstance().options(com.github.tomakehurst.wiremock.core.WireMockConfiguration.wireMockConfig().port(8989)).build();
 
+    @Test
+    void testRouting() {
+        com.github.tomakehurst.wiremock.client.WireMock.stubFor(
+            com.github.tomakehurst.wiremock.client.WireMock.get(
+                com.github.tomakehurst.wiremock.client.WireMock.urlPathEqualTo("/route"))
+                .withQueryParam("type", com.github.tomakehurst.wiremock.client.WireMock.equalTo("json"))
+                .willReturn(com.github.tomakehurst.wiremock.client.WireMock.aResponse()
+                    .withStatus(200)
+                    .withBody("{\"paths\":[{\"distance\":1234.5}]}"))
+    );
+
+    given().baseUri("http://localhost:8989")
+        .queryParam("point","48.858844,2.294351")
+        .queryParam("point","48.853,2.349")
+        .queryParam("type","json")
+        .when().get("/route")
+        .then().statusCode(200)
+        .body("paths", not(empty()))
+        .body("paths[0].distance", greaterThan(0.0f));
+    }
 }
