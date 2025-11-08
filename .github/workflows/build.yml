@@ -44,7 +44,7 @@ jobs:
         run: |
           mkdir -p $GITHUB_WORKSPACE/pitest-reports
           cp -r target/pit-reports/* $GITHUB_WORKSPACE/pitest-reports/
-      -name: Verify last commmit mutation score
+      - name: Verify last commmit mutation score
         uses: actions/checkout@v4
         with:
           ref: ${{ github.event.before }}
