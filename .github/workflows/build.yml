@@ -37,3 +37,33 @@ jobs:
       - name: Build ${{ matrix.java-version }}
         run: mvn -B clean test
 
+      - name: Verify current mutation score
+        run: |
+          mvn -B org.pitest:pitest-maven:mutationCoverage
+      - name: Save report Pitest
+        run: |
+          mkdir -p $GITHUB_WORKSPACE/pitest-reports
+          cp -r target/pit-reports/* $GITHUB_WORKSPACE/pitest-reports/
+      -name: Verify last commmit mutation score
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.before }}
+          path: prev
+          fetch-depth: 0
+      - name: Run Pitest on previous commit
+        run: |
+          cd prev
+          mvn -B org.pitest:pitest-maven:mutationCoverage
+      - name: Compare mutation scores
+        run: |
+          PREV_SCORE=$(grep 'Mutation Score:' prev/target/pit-reports/index.html | sed -E 's/.*Mutation Score:\s*([0-9]+).*/\1/')
+          CURR_SCORE=$(grep 'Mutation Score:' pitest-reports/index.html | sed -E 's/.*Mutation Score:\s*([0-9]+).*/\1/')
+          echo "Previous Mutation Score: $PREV_SCORE"
+          echo "Current Mutation Score: $CURR_SCORE"
+          if [ "$CURR_SCORE" -lt "$PREV_SCORE" ]; then
+            echo "Mutation score decreased from $PREV_SCORE to $CURR_SCORE"
+            exit 1
+          else
+            echo "Mutation score did not decrease."
+          fi
+          
