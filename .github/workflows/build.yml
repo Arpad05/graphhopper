@@ -73,5 +73,5 @@ jobs:
     steps:
       - name: Rickroll on failure
         run: |
-          echo "Mutation score decreased! Here's a treat for you:"
+          echo "Score de mutation en baisse!! Voici une petite consolation:"
           xdg-open "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
