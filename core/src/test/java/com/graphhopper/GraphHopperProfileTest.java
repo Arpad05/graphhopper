@@ -31,10 +31,31 @@ import java.util.Arrays;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.*;
 
 public class GraphHopperProfileTest {
 
     private static final String GH_LOCATION = "target/gh-profile-config-gh";
+
+    @Test
+    public void assertIllegalArgument_usesExceptionMessageParts_withMockito() {
+        // arrange : on crée un Runnable mocké qui va lancer IllegalArgumentException quand on l'exécute
+        Runnable failingRunnable = mock(Runnable.class);
+        doThrow(new IllegalArgumentException(
+                "LM profile references unknown preparation profile 'xyz'"
+        )).when(failingRunnable).run();
+
+        // act + assert : notre méthode utilitaire doit intercepter l'exception
+        // et vérifier que le message contient bien les deux morceaux ci-dessous
+        assertIllegalArgument(
+                failingRunnable,
+                "LM profile references unknown preparation profile",
+                "xyz"
+        );
+
+        // et on vérifie que le mock a bien été appelé une fois
+        verify(failingRunnable, times(1)).run();
+    }
 
     @Test
     public void deserialize() throws IOException {

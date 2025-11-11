@@ -24,21 +24,31 @@ import com.graphhopper.reader.ReaderWay;
 import com.graphhopper.reader.dem.SRTMProvider;
 import com.graphhopper.reader.dem.SkadiProvider;
 import com.graphhopper.routing.TestProfiles;
+import com.graphhopper.routing.WeightingFactory;
 import com.graphhopper.routing.ev.*;
+import com.graphhopper.routing.lm.LandmarkStorage;
 import com.graphhopper.routing.util.AllEdgesIterator;
 import com.graphhopper.routing.util.DefaultSnapFilter;
 import com.graphhopper.routing.util.EdgeFilter;
+import com.graphhopper.routing.util.EncodingManager;
 import com.graphhopper.routing.util.countryrules.CountryRuleFactory;
 import com.graphhopper.routing.util.parsers.OSMRoadEnvironmentParser;
 import com.graphhopper.routing.weighting.Weighting;
+import com.graphhopper.routing.Router;
+import com.graphhopper.routing.RouterConfig;
+import com.graphhopper.storage.BaseGraph;
 import com.graphhopper.storage.IntsRef;
+import com.graphhopper.storage.RoutingCHGraph;
+import com.graphhopper.storage.index.LocationIndex;
 import com.graphhopper.storage.index.LocationIndexTree;
 import com.graphhopper.storage.index.Snap;
 import com.graphhopper.util.*;
+import com.graphhopper.util.Parameters.Algorithms.RoundTrip;
 import com.graphhopper.util.Parameters.CH;
 import com.graphhopper.util.Parameters.Landmark;
 import com.graphhopper.util.Parameters.Routing;
 import com.graphhopper.util.details.PathDetail;
+import com.graphhopper.util.details.PathDetailsBuilderFactory;
 import com.graphhopper.util.exceptions.ConnectionNotFoundException;
 import com.graphhopper.util.exceptions.MaximumNodesExceededException;
 import com.graphhopper.util.exceptions.PointDistanceExceededException;
@@ -71,6 +81,7 @@ import static com.graphhopper.util.Parameters.Routing.TIMEOUT_MS;
 import static com.graphhopper.util.Parameters.Routing.U_TURN_COSTS;
 import static java.util.Arrays.asList;
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.*;
 
 /**
  * @author Peter Karich
@@ -139,6 +150,50 @@ public class GraphHopperTest {
         rsp = hopper.route(req);
         assertTrue(rsp.hasErrors());
         assertTrue(rsp.getErrors().toString().contains("ConnectionNotFoundException"), rsp.getErrors().toString());
+    }
+
+    /**
+     * Variante de GraphHopper permettant d'injecter un WeightingFactory mocké
+     * pour tester createWeighting(...) sans dépendre de DefaultWeightingFactory.
+     */
+    private static class GraphHopperWithMockWeightingFactory extends GraphHopper {
+        private final WeightingFactory weightingFactory;
+
+        GraphHopperWithMockWeightingFactory(WeightingFactory weightingFactory) {
+            this.weightingFactory = weightingFactory;
+        }
+
+        @Override
+        protected WeightingFactory createWeightingFactory() {
+            return weightingFactory;
+        }
+    }
+
+    @Test
+    public void createWeighting_delegatesToWeightingFactory() {
+        // arrange
+        Profile profile = new Profile("car_fastest")
+                .setWeighting("fastest");
+        PMap hints = new PMap().putObject(Routing.U_TURN_COSTS, 40);
+
+        WeightingFactory weightingFactory = mock(WeightingFactory.class);
+        Weighting weighting = mock(Weighting.class);
+
+        // GraphHopper qui utilse notre factory mockée
+        GraphHopper hopper = new GraphHopperWithMockWeightingFactory(weightingFactory)
+                .setProfiles(profile);
+
+        when(weightingFactory.createWeighting(profile, hints, true))
+                .thenReturn(weighting);
+
+        // act
+        Weighting result = hopper.createWeighting(profile, hints, true);
+
+        // assert
+        assertSame(weighting, result, "GraphHopper doit renvoyer le Weighting produit par la factory");
+        verify(weightingFactory, times(1))
+                .createWeighting(profile, hints, true);
+        verifyNoMoreInteractions(weightingFactory);
     }
 
     @Test
