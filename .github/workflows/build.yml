@@ -5,8 +5,8 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
-      matrix:
-        java-version: [ 24, 25-ea ]
+    matrix:
+      java-version: [ 21, 23 ]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -73,5 +73,10 @@ jobs:
     steps:
       - name: Rickroll on failure
         run: |
-          echo "Score de mutation en baisse!! Voici une petite consolation:"
-          xdg-open "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+          echo "Le score de mutation a baissée !!"
+          echo "Never gonna give you up"
+          echo "Never gonna let you down"
+          echo "Never gonna fail the tests and desert you"
+          echo "Never gonna make you cry"
+          echo "Never say 'Good try' "
+          echo "Never gonna tell a lie and compile for you"
