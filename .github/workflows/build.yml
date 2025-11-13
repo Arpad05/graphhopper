@@ -13,28 +13,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup Node.js (version compatible)
-        uses: actions/setup-node@v4
-        with:
-          node-version: '18'
-
-      - name: Clean NPM cache
-        run: npm cache clean --force || true
-
-      - name: Cache node_modules
-        uses: actions/cache@v4
-        with:
-          path: web-bundle/node_modules
-          key: ${{ runner.os }}-node-${{ hashFiles('web-bundle/package-lock.json') }}
-          restore-keys: |
-            ${{ runner.os }}-node-
-
-      - name: Build Web Bundle manually
-        working-directory: web-bundle
-        run: |
-          npm install
-          npm run build
-
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
