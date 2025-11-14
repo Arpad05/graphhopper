@@ -9,10 +9,13 @@ jobs:
       fail-fast: false
       matrix:
         java-version: [ 21 ]
+        
 
     steps:
       - uses: actions/checkout@v4
-
+      - name: Build all modules
+        run: mvn -B clean install -DskipTests
+        
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
