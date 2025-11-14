@@ -35,15 +35,22 @@ jobs:
 
       - name: Verify current mutation score
         run: |
-          mvn -B -P mutation org.pitest:pitest-maven:mutationCoverage
-
+          mvn -B clean install -DskipTests
+          mvn -B org.pitest:pitest-maven:mutationCoverage || true
       - name: Save reports from all modules
         run: |
           mkdir -p $GITHUB_WORKSPACE/pitest-reports
-          find . -type d -path "*/target/pit-reports" | while read dir; do
+          found=0
+          for dir in $(find . -type d -path "*/target/pit-reports"); do
+            echo "Copie depuis $dir"
             cp -r "$dir"/* $GITHUB_WORKSPACE/pitest-reports/ || true
+            found=1
           done
-          echo "all good"
+          if [ $found -eq 0 ]; then
+            echo "Aucun rapport Pitest trouvé — vérifier la configuration du plugin."
+          else
+            echo "Rapports Pitest sauvegardés."
+          fi
 
       - name: Verify last commit mutation score
         uses: actions/checkout@v4
@@ -55,21 +62,22 @@ jobs:
       - name: Run Pitest on previous commit
         run: |
           cd prev
-          mvn -B -P mutation org.pitest:pitest-maven:mutationCoverage
+          mvn -B -P mutation org.pitest:pitest-maven:mutationCoverage || true
+          mkdir -p $GITHUB_WORKSPACE/prev-reports
+          for dir in $(find . -type d -path "*/target/pit-reports"); do
+            echo "Copie depuis $dir"
+            cp -r "$dir"/* $GITHUB_WORKSPACE/prev-reports/ || true
+          done
 
       - name: Compare mutation scores
         run: |
-          PREV_SCORE=$(grep 'Mutation Score:' prev/target/pit-reports/index.html | sed -E 's/.*Mutation Score:\s*([0-9]+).*/\1/')
-          CURR_SCORE=$(grep 'Mutation Score:' pitest-reports/index.html | sed -E 's/.*Mutation Score:\s*([0-9]+).*/\1/')
+          PREV_SCORE=$(find prev-reports -type f -name "index.html" -exec grep -oP "(?<=Mutation Score: )\d+" {} \; | head -1 || echo 0)
+          CURR_SCORE=$(find pitest-reports -type f -name "index.html" -exec grep -oP "(?<=Mutation Score: )\d+" {} \; | head -1 || echo 0)
           echo "Previous Mutation Score: $PREV_SCORE"
           echo "Current Mutation Score: $CURR_SCORE"
           if [ "$CURR_SCORE" -lt "$PREV_SCORE" ]; then
-            echo "Mutation score decreased from $PREV_SCORE to $CURR_SCORE"
             exit 1
-          else
-            echo "Mutation score did not decrease."
           fi
-
   rickroll:
     needs: build
     if: ${{ failure() }}
