@@ -21,6 +21,12 @@
             <artifactId>jackson-core</artifactId>
         </dependency>
         <dependency>
+          <groupId>org.pitest</groupId>
+          <artifactId>pitest-junit5-plugin</artifactId>
+          <version>1.2.0</version>
+          <scope>test</scope>
+        </dependency>
+        <dependency>
             <groupId>com.fasterxml.jackson.core</groupId>
             <artifactId>jackson-databind</artifactId>
         </dependency>
@@ -34,6 +40,49 @@
         </dependency>
     </dependencies>
 
+    <build>
+      <plugins>
+        <plugin>
+          <groupId>org.pitest</groupId>
+          <artifactId>pitest-maven</artifactId>
+          <version>1.21.1</version>
+          <configuration>
+            <targetClasses>
+              <param>com.graphhopper.*</param>
+            </targetClasses>
+            <targetTests>
+              <param>com.graphhopper.*Test</param>
+            </targetTests>
+            <mutators>
+              <mutator>STRONGER</mutator>
+            </mutators>
+            <threads>2</threads>
+            <outputFormats>
+              <param>HTML</param>
+              <param>XML</param>
+            </outputFormats>
+          </configuration>
+        </plugin>
+      </plugins>
+    </build>
+    <profiles>
+      <profile>
+        <id>mutation</id>
+        <activation>
+          <property>
+            <name>env.CI</name>
+          </property>
+        </activation>
+        <build>
+          <plugins>
+            <plugin>
+              <groupId>org.pitest</groupId>
+              <artifactId>pitest-maven</artifactId>
+            </plugin>
+          </plugins>
+        </build>
+      </profile>
+    </profiles>
 </project>
 
 
