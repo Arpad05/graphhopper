@@ -37,10 +37,13 @@ jobs:
         run: |
           mvn -B -P mutation org.pitest:pitest-maven:mutationCoverage
 
-      - name: Save report Pitest
+      - name: Save reports from all modules
         run: |
           mkdir -p $GITHUB_WORKSPACE/pitest-reports
-          cp -r target/pit-reports/* $GITHUB_WORKSPACE/pitest-reports/
+          find . -type d -path "*/target/pit-reports" | while read dir; do
+            cp -r "$dir"/* $GITHUB_WORKSPACE/pitest-reports/ || true
+          done
+          echo "all good"
 
       - name: Verify last commit mutation score
         uses: actions/checkout@v4
