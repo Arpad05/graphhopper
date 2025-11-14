@@ -31,17 +31,15 @@ jobs:
         run: mvn -B clean test
 
       - name: Verify current mutation score
-        if: ${{ matrix.java-version == '21' }}
-        run: mvn -B org.pitest:pitest-maven:mutationCoverage
+        run: |
+          mvn -B -P mutation org.pitest:pitest-maven:mutationCoverage
 
       - name: Save report Pitest
-        if: ${{ matrix.java-version == '21' }}
         run: |
           mkdir -p $GITHUB_WORKSPACE/pitest-reports
           cp -r target/pit-reports/* $GITHUB_WORKSPACE/pitest-reports/
 
       - name: Verify last commit mutation score
-        if: ${{ matrix.java-version == '21' }}
         uses: actions/checkout@v4
         with:
           ref: ${{ github.event.before }}
@@ -49,13 +47,11 @@ jobs:
           fetch-depth: 0
 
       - name: Run Pitest on previous commit
-        if: ${{ matrix.java-version == '21' }}
         run: |
           cd prev
-          mvn -B org.pitest:pitest-maven:mutationCoverage
+          mvn -B -P mutation org.pitest:pitest-maven:mutationCoverage
 
       - name: Compare mutation scores
-        if: ${{ matrix.java-version == '21' }}
         run: |
           PREV_SCORE=$(grep 'Mutation Score:' prev/target/pit-reports/index.html | sed -E 's/.*Mutation Score:\s*([0-9]+).*/\1/')
           CURR_SCORE=$(grep 'Mutation Score:' pitest-reports/index.html | sed -E 's/.*Mutation Score:\s*([0-9]+).*/\1/')
