@@ -73,7 +73,8 @@ jobs:
             "web"
             "web-api"
             "web-bundle"
-          )          BASELINE_FILE="pit-baseline.json"
+          )
+          BASELINE_FILE="pit-baseline.json"
           REGRESSION=false
           REGRESSIONS=()
           if [[ ! -f "$BASELINE_FILE" ]]; then
