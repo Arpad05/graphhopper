@@ -71,6 +71,8 @@ jobs:
             echo "{}" > "$BASELINE_FILE"
             echo "Created empty $BASELINE_FILE — populate it with baseline scores if you want persistent checks."
           fi
+          mvn -B -P mutation org.pitest:pitest-maven:mutationCoverage
+          MODULE_LIST=(client-hc core example map-matching navigation reader-gtfs tools web web-api web-bundle)
           extract_score() {
             local rptdir="$1"
             local latest
@@ -86,21 +88,6 @@ jobs:
                 printf "%.2f" "$val"
                 return
               fi
-              local killed total
-              killed=$(grep -c '<mutation[^>]*status="KILLED"' "$latest/mutations.xml" || true)
-              total=$(grep -c '<mutation ' "$latest/mutations.xml" || true)
-              if [[ -n "$total" && "$total" -gt 0 ]]; then
-                awk -v k="$killed" -v t="$total" 'BEGIN{ printf("%.2f", (k/t)*100) }'
-                return
-              fi
-            fi
-            if [[ -f "$latest/index.html" ]]; then
-              local pct
-              pct=$(grep -oP 'Mutation (coverage|score)[^0-9]*\K[0-9]+(\.[0-9]+)?' "$latest/index.html" | head -n1 || true)
-              if [[ -n "$pct" ]]; then
-                printf "%.2f" "$pct"
-                return
-              fi
             fi
             echo ""
           }
@@ -110,35 +97,14 @@ jobs:
           done < <(jq -r 'to_entries[] | "\(.key)\t\(.value)"' "$BASELINE_FILE" 2>/dev/null || true)
           declare -A CURRENT
           for module in "${MODULE_LIST[@]}"; do
-            echo ">>> Checking module: $module"
-            if [[ ! -d "$module" ]]; then
-              echo "  - skip: directory not present"
-              continue
+            rpt="`pwd`/$module/target/pit-reports"
+            if [[ -d "$rpt" ]]; then
+              score=$(extract_score "$rpt")
+              if [[ -n "$score" ]]; then
+                CURRENT["$module"]="$score"
+                echo "Module $module score: $score%"
+              fi
             fi
-            if [[ ! -d "$module/src" ]]; then
-              echo "  - skip: no src/ directory"
-              continue
-            fi
-            pushd "$module" >/dev/null
-            echo "  - running PIT for $module (may take a while)..."
-            if ! mvn -B org.pitest:pitest-maven:mutationCoverage; then
-              echo "  - PIT failed for $module; skipping score extraction"
-              popd >/dev/null
-              continue
-            fi
-            if [[ -d target/pit-reports ]]; then
-              score=$(extract_score "target/pit-reports")
-            else
-              score=""
-            fi
-            if [[ -z "$score" ]]; then
-              echo "  - could not extract score for $module"
-              popd >/dev/null
-              continue
-            fi
-            echo "  - current score: ${score}%"
-            CURRENT["$module"]="$score"
-            popd >/dev/null
           done
           for k in "${!CURRENT[@]}"; do
             cur=${CURRENT[$k]}
@@ -162,10 +128,6 @@ jobs:
             reglist=""
           fi
           echo "modules=$reglist" >> $GITHUB_OUTPUT
-      - name: Show outputs
-        run: |
-          echo "regression = ${{ steps.pit_check.outputs.regression }}"
-          echo "modules    = ${{ steps.pit_check.outputs.modules }}"
 
   rickroll:
     needs: mutation
