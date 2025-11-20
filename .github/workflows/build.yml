@@ -41,104 +41,104 @@ jobs:
       - name: Build all modules
         run: mvn -B clean install -DskipTests
   mutation:
-  needs: build
-  runs-on: ubuntu-latest
-  outputs:
-  regression: ${{ steps.pit_check.outputs.regression }}
-  modules: ${{ steps.pit_check.outputs.modules }}
-  steps:
-  - uses: actions/checkout@v4
-    with:
-      fetch-depth: 0
-  - name: Setup Java for PIT
-    uses: actions/setup-java@v4
-    with:
-      java-version: 17
-      distribution: temurin
-  - name: Install tools (jq, curl)
-    run: |
-      sudo apt-get update
-      sudo apt-get install -y jq curl
+    needs: build
+    runs-on: ubuntu-latest
+    outputs:
+    regression: ${{ steps.pit_check.outputs.regression }}
+    modules: ${{ steps.pit_check.outputs.modules }}
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+    - name: Setup Java for PIT
+      uses: actions/setup-java@v4
+      with:
+        java-version: 17
+        distribution: temurin
+    - name: Install tools (jq, curl)
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y jq curl
 
-  - name: Determine changed modules
-    id: changed_modules
-    shell: bash
-    run: |
-      git fetch origin main
-      CHANGED_MODULES=()
-      for f in $(git diff --name-only origin/main $GITHUB_SHA); do
-        dir=$(dirname "$f")
-        while [ "$dir" != "." ]; do
-          if [ -f "$dir/pom.xml" ]; then
-            CHANGED_MODULES+=("$dir")
-            break
-          fi
-          dir=$(dirname "$dir")
+    - name: Determine changed modules
+      id: changed_modules
+      shell: bash
+      run: |
+        git fetch origin main
+        CHANGED_MODULES=()
+        for f in $(git diff --name-only origin/main $GITHUB_SHA); do
+          dir=$(dirname "$f")
+          while [ "$dir" != "." ]; do
+            if [ -f "$dir/pom.xml" ]; then
+              CHANGED_MODULES+=("$dir")
+              break
+            fi
+            dir=$(dirname "$dir")
+          done
         done
-      done
-      UNIQUE_MODULES=$(printf "%s\n" "${CHANGED_MODULES[@]}" | sort -u)
-      echo "Modules affectés : $UNIQUE_MODULES"
-      echo "modules=$(echo $UNIQUE_MODULES | tr '\n' ',')" >> $GITHUB_OUTPUT
+        UNIQUE_MODULES=$(printf "%s\n" "${CHANGED_MODULES[@]}" | sort -u)
+        echo "Modules affectés : $UNIQUE_MODULES"
+        echo "modules=$(echo $UNIQUE_MODULES | tr '\n' ',')" >> $GITHUB_OUTPUT
 
-  - name: Run PIT on changed modules
-    id: pit_check
-    shell: bash
-    run: |
-      set -euo pipefail
-      REGRESSION=false
-      REGRESSIONS=()
-      BASELINE_FILE="pit-baseline.json"
-      if [[ ! -f "$BASELINE_FILE" ]]; then
-        echo "{}" > "$BASELINE_FILE"
-      fi
-      extract_score() {
-        local rptdir="$1"
-        local latest
-        latest=$(ls -1dt "$rptdir"/* 2>/dev/null | head -n1 || true)
-        if [[ -f "$latest/mutations.xml" ]]; then
-          grep -oP 'mutationCoverage[^>]*value="\K[0-9]+(\.[0-9]+)?' "$latest/mutations.xml" || true
+    - name: Run PIT on changed modules
+      id: pit_check
+      shell: bash
+      run: |
+        set -euo pipefail
+        REGRESSION=false
+        REGRESSIONS=()
+        BASELINE_FILE="pit-baseline.json"
+        if [[ ! -f "$BASELINE_FILE" ]]; then
+          echo "{}" > "$BASELINE_FILE"
         fi
-      }
-      declare -A BASE
-      while IFS=$'\t' read -r k v; do
-        BASE["$k"]="$v"
-      done < <(jq -r 'to_entries[] | "\(.key)\t\(.value)"' "$BASELINE_FILE" 2>/dev/null || true)
-
-      declare -A CURRENT
-      for module in $(echo "${{ steps.changed_modules.outputs.modules }}" | tr ',' ' '); do
-        echo ">>> Running PIT for module: $module"
-        pushd "$module" >/dev/null
-        mvn -B -P mutation org.pitest:pitest-maven:mutationCoverage
-        rpt="target/pit-reports"
-        if [[ -d "$rpt" ]]; then
-          score=$(extract_score "$rpt")
-          if [[ -n "$score" ]]; then
-            CURRENT["$module"]="$score"
-            echo "Module $module score: $score%"
+        extract_score() {
+          local rptdir="$1"
+          local latest
+          latest=$(ls -1dt "$rptdir"/* 2>/dev/null | head -n1 || true)
+          if [[ -f "$latest/mutations.xml" ]]; then
+            grep -oP 'mutationCoverage[^>]*value="\K[0-9]+(\.[0-9]+)?' "$latest/mutations.xml" || true
           fi
-        fi
-        popd >/dev/null
-      done
+        }
+        declare -A BASE
+        while IFS=$'\t' read -r k v; do
+          BASE["$k"]="$v"
+        done < <(jq -r 'to_entries[] | "\(.key)\t\(.value)"' "$BASELINE_FILE" 2>/dev/null || true)
 
-      for k in "${!CURRENT[@]}"; do
-        cur=${CURRENT[$k]}
-        base=${BASE[$k]:-}
-        if [[ -z "$base" ]]; then
-          echo "Module $k: no baseline (current ${cur}%)"
-          continue
-        fi
-        if awk -v c="$cur" -v b="$base" 'BEGIN{ exit ((c+0) < (b+0)) ? 0 : 1 }'; then
-          echo "REGRESSION: $k baseline=${base}% -> current=${cur}%"
-          REGRESSION=true
-          REGRESSIONS+=("$k")
-        else
-          echo "OK: $k baseline=${base}% -> current=${cur}%"
-        fi
-      done
+        declare -A CURRENT
+        for module in $(echo "${{ steps.changed_modules.outputs.modules }}" | tr ',' ' '); do
+          echo ">>> Running PIT for module: $module"
+          pushd "$module" >/dev/null
+          mvn -B -P mutation org.pitest:pitest-maven:mutationCoverage
+          rpt="target/pit-reports"
+          if [[ -d "$rpt" ]]; then
+            score=$(extract_score "$rpt")
+            if [[ -n "$score" ]]; then
+              CURRENT["$module"]="$score"
+              echo "Module $module score: $score%"
+            fi
+          fi
+          popd >/dev/null
+        done
 
-      echo "regression=$REGRESSION" >> $GITHUB_OUTPUT
-      reglist=$(IFS=, ; echo "${REGRESSIONS[*]}")
-      echo "modules=$reglist" >> $GITHUB_OUTPUT
+        for k in "${!CURRENT[@]}"; do
+          cur=${CURRENT[$k]}
+          base=${BASE[$k]:-}
+          if [[ -z "$base" ]]; then
+            echo "Module $k: no baseline (current ${cur}%)"
+            continue
+          fi
+          if awk -v c="$cur" -v b="$base" 'BEGIN{ exit ((c+0) < (b+0)) ? 0 : 1 }'; then
+            echo "REGRESSION: $k baseline=${base}% -> current=${cur}%"
+            REGRESSION=true
+            REGRESSIONS+=("$k")
+          else
+            echo "OK: $k baseline=${base}% -> current=${cur}%"
+          fi
+        done
+
+        echo "regression=$REGRESSION" >> $GITHUB_OUTPUT
+        reglist=$(IFS=, ; echo "${REGRESSIONS[*]}")
+        echo "modules=$reglist" >> $GITHUB_OUTPUT
 
   rickroll:
     needs: mutation
