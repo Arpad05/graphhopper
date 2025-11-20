@@ -37,6 +37,10 @@ jobs:
           key: ${{ runner.os }}-node-${{ hashFiles('**/pom.xml', '**/package.json') }}
           restore-keys: |
             ${{ runner.os }}-node_modules-
+      - name: Clear Maven SNAPSHOT cache
+        run: |
+          echo "Removing old GraphHopper SNAPSHOT artifacts..."
+          rm -rf ~/.m2/repository/com/graphhopper
       - name: Build all modules
         run: mvn -B clean install -DskipTests
   mutation:
