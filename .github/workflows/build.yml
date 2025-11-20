@@ -116,7 +116,9 @@ jobs:
           declare -A BASE
           while IFS=$'\t' read -r k v; do
             BASE["$k"]="$v"
-          done < <(jq -r 'to_entries[] | "\(.key)\t\(.value)"' "$BASELINE_FILE" 2>/dev/null || true)          declare -A CURRENT          for module in "${MODULE_LIST[@]}"; do
+          done < <(jq -r 'to_entries[] | "\(.key)\t\(.value)"' "$BASELINE_FILE" 2>/dev/null || true)
+          declare -A CURRENT
+          for module in "${MODULE_LIST[@]}"; do
             echo ">>> Checking module: $module"
             if [[ ! -d "$module" ]]; then
               echo "  - skip: directory not present"
@@ -125,20 +127,25 @@ jobs:
             if [[ ! -d "$module/src" ]]; then
               echo "  - skip: no src/ directory"
               continue
-            fi            pushd "$module" >/dev/null            echo "  - running PIT for $module (may take a while)..."
+            fi
+            pushd "$module" >/dev/null
+            echo "  - running PIT for $module (may take a while)..."
             if ! mvn -B org.pitest:pitest-maven:mutationCoverage; then
               echo "  - PIT failed for $module; skipping score extraction"
               popd >/dev/null
               continue
-            fi            if [[ -d target/pit-reports ]]; then
+            fi
+            if [[ -d target/pit-reports ]]; then
               score=$(extract_score "target/pit-reports")
             else
               score=""
-            fi            if [[ -z "$score" ]]; then
+            fi
+            if [[ -z "$score" ]]; then
               echo "  - could not extract score for $module"
               popd >/dev/null
               continue
-            fi            echo "  - current score: ${score}%"
+            fi
+            echo "  - current score: ${score}%"
             CURRENT["$module"]="$score"
             popd >/dev/null
           done
