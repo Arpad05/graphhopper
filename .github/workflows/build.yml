@@ -36,41 +36,51 @@ jobs:
             ${{ runner.os}}-node_modules-
       - name: Build ${{ matrix.java-version }}
         run: mvn -B clean test
+
   mutation:
-    name: Run PIT by module and compare baseline
+    name: Run PIT (per-module) and compare baseline
     needs: build
     runs-on: ubuntu-latest
+    outputs:
+      regression: ${{ steps.pit_check.outputs.regression }}
+      modules: ${{ steps.pit_check.outputs.modules }}
     steps:
-      - name: Build and install all modules
-        run: mvn -B clean install -DskipTests
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0
-      - name: Setup Java
+          fetch-depth: 0      - name: Setup Java (required by PIT)
         uses: actions/setup-java@v4
         with:
           java-version: 17
-          distribution: temurin
-      - name: Instattall jq and curl
+          distribution: temurin      - name: Install tools (jq, curl)
         run: |
           sudo apt-get update
-          sudo apt-get install -y jq curl
-      - name: Run PIT and compare to baseline
+          sudo apt-get install -y jq curl      - name: Run PIT per known module & compare baseline
         id: pit_check
         shell: bash
         run: |
           set -euo pipefail
-          BASELINE_FILE="pit-baseline.json"
+          MODULE_LIST=(
+            "client-hc"
+            "core"
+            "example"
+            "map-matching"
+            "navigation"
+            "reader-gtfs"
+            "tools"
+            "web"
+            "web-api"
+            "web-bundle"
+          )          BASELINE_FILE="pit-baseline.json"
           REGRESSION=false
           REGRESSIONS=()
           if [[ ! -f "$BASELINE_FILE" ]]; then
             echo "{}" > "$BASELINE_FILE"
-            echo "Created empty $BASELINE_FILE as no baseline existed."
+            echo "Created empty $BASELINE_FILE — populate it with baseline scores if you want persistent checks."
           fi
           extract_score() {
-            local rpt="$1"
+            local rptdir="$1"
             local latest
-            latest=$(ls -1dt "$rpt"/* 2>/dev/null | head -n1 || true)
+            latest=$(ls -1dt "$rptdir"/* 2>/dev/null | head -n1 || true)
             if [[ -z "$latest" ]]; then
               echo ""
               return
@@ -100,57 +110,33 @@ jobs:
             fi
             echo ""
           }
-          MODULES=()
-          while IFS= read -r -d '' d; do
-            MODULES+=("$(dirname "$d")")
-          done < <(find . -maxdepth 2 -type f -name pom.xml -print0 | sort -z)
-          MAP_MODULES=()
-          for p in "${MODULES[@]}"; do
-            dir=$(echo "$p" | sed 's|^\./||')
-            # skip root pom
-            if [[ "$dir" == "." || -f "./src/main/java" ]]; then
-              # if root has src/main/java, keep it; else skip root
-              if [[ ! -d "./src" ]]; then
-                continue
-              fi
-            fi
-            MAP_MODULES+=("$dir")
-          done
-          MODULES=($(printf "%s\n" "${MAP_MODULES[@]}" | awk '!seen[$0]++'))
-          echo "Detected modules: ${MODULES[*]}"
-          # read baseline JSON
           declare -A BASE
           while IFS=$'\t' read -r k v; do
             BASE["$k"]="$v"
-          done < <(jq -r 'to_entries[] | "\(.key)\t\(.value)"' "$BASELINE_FILE" 2>/dev/null || true)
-          declare -A CURRENT
-          for m in "${MODULES[@]}"; do
-            echo ">>> Processing module: $m"
-            # skip modules without src (likely packaging pom)
-            if [[ ! -d "$m/src" ]]; then
-              echo "  - skipping (no src/)"
+          done < <(jq -r 'to_entries[] | "\(.key)\t\(.value)"' "$BASELINE_FILE" 2>/dev/null || true)          declare -A CURRENT          for module in "${MODULE_LIST[@]}"; do
+            echo ">>> Checking module: $module"
+            if [[ ! -d "$module" ]]; then
+              echo "  - skip: directory not present"
               continue
             fi
-            pushd "$m" >/dev/null
-            echo "  - running PIT for $m (may take time)..."
-            # run PIT; keep verbose output to logs. Timeout or resource constraints can be added as needed.
+            if [[ ! -d "$module/src" ]]; then
+              echo "  - skip: no src/ directory"
+              continue
+            fi            pushd "$module" >/dev/null            echo "  - running PIT for $module (may take a while)..."
             if ! mvn -B org.pitest:pitest-maven:mutationCoverage; then
-              echo "  - PIT failed for $m; skipping score extraction"
+              echo "  - PIT failed for $module; skipping score extraction"
               popd >/dev/null
               continue
-            fi
-            if [[ -d target/pit-reports ]]; then
+            fi            if [[ -d target/pit-reports ]]; then
               score=$(extract_score "target/pit-reports")
             else
               score=""
-            fi
-            if [[ -z "$score" ]]; then
-              echo "  - could not extract score for $m"
+            fi            if [[ -z "$score" ]]; then
+              echo "  - could not extract score for $module"
               popd >/dev/null
               continue
-            fi
-            echo "  - current score: ${score}%"
-            CURRENT["$m"]="$score"
+            fi            echo "  - current score: ${score}%"
+            CURRENT["$module"]="$score"
             popd >/dev/null
           done
           for k in "${!CURRENT[@]}"; do
@@ -160,7 +146,7 @@ jobs:
               echo "Module $k: no baseline (current ${cur}%)"
               continue
             fi
-            if awk -v c="$cur" -v b="$base" 'BEGIN{ if ((c+0) < (b+0)) exit 0; else exit 1 }'; then
+            if awk -v c="$cur" -v b="$base" 'BEGIN{ exit ((c+0) < (b+0)) ? 0 : 1 }'; then
               echo "REGRESSION: $k baseline=${base}% -> current=${cur}%"
               REGRESSION=true
               REGRESSIONS+=("$k")
@@ -168,18 +154,18 @@ jobs:
               echo "OK: $k baseline=${base}% -> current=${cur}%"
             fi
           done
-          echo "::set-output name=regression::$REGRESSION"
-          # join regressions by comma
+          echo "regression=$REGRESSION" >> $GITHUB_OUTPUT
           if [[ ${#REGRESSIONS[@]} -gt 0 ]]; then
             reglist=$(IFS=, ; echo "${REGRESSIONS[*]}")
           else
             reglist=""
           fi
-          echo "::set-output name=modules::$reglist"
+          echo "modules=$reglist" >> $GITHUB_OUTPUT
       - name: Show outputs
         run: |
           echo "regression = ${{ steps.pit_check.outputs.regression }}"
           echo "modules    = ${{ steps.pit_check.outputs.modules }}"
+
   rickroll:
     needs: build
     if: ${{ failure() }}
