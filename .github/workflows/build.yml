@@ -3,10 +3,6 @@ on: push
 jobs:
   build:
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        java-version: [24, 25-ea]
     steps:
       - uses: actions/checkout@v4
         with:
@@ -14,7 +10,7 @@ jobs:
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
-          java-version: ${{ matrix.java-version }}
+          java-version: 17
           distribution: temurin
       - name: Cache Maven artifacts
         uses: actions/cache@v4
@@ -37,10 +33,7 @@ jobs:
           key: ${{ runner.os }}-node-${{ hashFiles('**/pom.xml', '**/package.json') }}
           restore-keys: |
             ${{ runner.os }}-node_modules-
-      - name: Clear Maven SNAPSHOT cache
-        run: |
-          echo "Removing old GraphHopper SNAPSHOT artifacts..."
-          rm -rf ~/.m2/repository/com/graphhopper
+
       - name: Build all modules
         run: mvn -B clean install -DskipTests
   mutation:
