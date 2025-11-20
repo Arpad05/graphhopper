@@ -47,7 +47,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0      - name: Setup Java (required by PIT)
+          fetch-depth: 0
+      - name: Setup Java (required by PIT)
         uses: actions/setup-java@v4
         with:
           java-version: 17
