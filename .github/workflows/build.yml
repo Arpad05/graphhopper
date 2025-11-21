@@ -9,10 +9,14 @@ jobs:
         java-version: [ 24, 25-ea ]
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
       - uses: actions/setup-java@v4
         with:
           java-version: ${{ matrix.java-version }}
           distribution: temurin
+      
       - name: Cache Maven artifacts
         uses: actions/cache@v4
         with:
@@ -20,6 +24,7 @@ jobs:
           key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
           restore-keys: |
             ${{ runner.os }}-maven-
+      
       - name: Cache node
         uses: actions/cache@v4
         with:
@@ -27,6 +32,7 @@ jobs:
           key: ${{ runner.os }}-node-${{ hashFiles('**/pom.xml') }}
           restore-keys: |
             ${{ runner.os}}-node-
+      
       - name: Cache node_modules
         uses: actions/cache@v4
         with:
@@ -34,5 +40,74 @@ jobs:
           key: ${{ runner.os }}-node-${{ hashFiles('**/pom.xml', '**/package.json') }}
           restore-keys: |
             ${{ runner.os}}-node_modules-
+      
       - name: Build ${{ matrix.java-version }}
         run: mvn -B clean test
+      
+      - name: Run PIT Mutation Testing
+        if: matrix.java-version == '24'
+        run: mvn -P mutation org.pitest:pitest-maven:mutationCoverage
+      
+      - name: Extract mutation score
+        if: matrix.java-version == '24'
+        id: mutation-score
+        run: |
+          # Extract mutation coverage from the PIT XML report
+          if [ -f "navigation/target/pit-reports/mutations.xml" ]; then
+            CURRENT_SCORE=$(grep -oP '(?<=<mutation detected=")[^"]*' navigation/target/pit-reports/mutations.xml | head -1 | awk '{print int($1)}')
+            echo "current_score=$CURRENT_SCORE" >> $GITHUB_OUTPUT
+            echo "Current mutation score: $CURRENT_SCORE%"
+          else
+            echo "current_score=0" >> $GITHUB_OUTPUT
+          fi
+      
+      - name: Get previous mutation score
+        if: matrix.java-version == '24'
+        id: previous-score
+        run: |
+          # Try to get the previous score from the last successful run
+          PREVIOUS_SCORE=$(cat mutation_score.txt 2>/dev/null || echo "0")
+          echo "previous_score=$PREVIOUS_SCORE" >> $GITHUB_OUTPUT
+          echo "Previous mutation score: $PREVIOUS_SCORE%"
+      
+      - name: Check mutation score and rickroll if lower
+        if: matrix.java-version == '24'
+        run: |
+          CURRENT=${{ steps.mutation-score.outputs.current_score }}
+          PREVIOUS=${{ steps.previous-score.outputs.previous_score }}
+          
+          if [ "$CURRENT" -lt "$PREVIOUS" ]; then
+            echo "Le score de mutation a baissé !!"
+            echo "Never gonna give you up"
+            echo "Never gonna let you down"
+            echo "Never gonna fail the tests and desert you"
+            echo "Never gonna make you cry"
+            echo "Never gonna say 'Good try'"
+            echo "Never gonna tell a lie and compile for you"
+            echo "Score précédent: $PREVIOUS%"
+            echo "Score actuel: $CURRENT%"
+            echo "Différence: -$((PREVIOUS - CURRENT))%"
+          else
+            echo "Mutation score maintained or improved!"
+            echo "Previous: $PREVIOUS%"
+            echo "Current: $CURRENT%"
+          fi
+      
+      - name: Save current mutation score
+        if: matrix.java-version == '24'
+        run: |
+          echo "${{ steps.mutation-score.outputs.current_score }}" > mutation_score.txt
+      
+      - name: Upload mutation score
+        if: matrix.java-version == '24'
+        uses: actions/upload-artifact@v4
+        with:
+          name: mutation-score
+          path: mutation_score.txt
+      
+      - name: Upload PIT reports
+        if: matrix.java-version == '24'
+        uses: actions/upload-artifact@v4
+        with:
+          name: pit-reports
+          path: navigation/target/pit-reports/
