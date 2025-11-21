@@ -140,17 +140,24 @@ jobs:
           name: mutation-score
           path: mutation_score.txt
       
-      - name: Upload PIT reports
+      - name: Upload PIT reports navigation
         if: matrix.java-version == '24'
         uses: actions/upload-artifact@v4
         with:
           name: pit-reports-navigation
           path: navigation/target/pit-reports/
+      - name: Upload PIT reports web-api
+        if: matrix.java-version == '24'
+        uses: actions/upload-artifact@v4
+        with:
           name: pit-reports-web-api
-          path : web-api/target/pit-reports/
+          path: web-api/target/pit-reports/
+      - name: pit-reports-client-hc
+        if: matrix.java-version == '24'
+        uses: actions/upload-artifact@v4
+        with:
           name: pit-reports-client-hc
-          path : client-hc/target/pit-reports/
-
+          path: client-hc/target/pit-reports/
       - name: Fail build if rickrolled
         if: matrix.java-version == '24' && steps.rickroll-check.outputs.RICKROLLED == 'true'
         run: exit 1
