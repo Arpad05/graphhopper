@@ -65,41 +65,70 @@ jobs:
         if: matrix.java-version == '24'
         run: mvn -P mutation org.pitest:pitest-maven:mutationCoverage | tee pit-output.log
 
-      - name: Extract mutation score (from XML)
+      - name: Extract mutation score (try XML then console)
         if: matrix.java-version == '24'
         id: mutation-score
         run: |
           REPORT_DIR="navigation/target/pit-reports"
-          if [ ! -d "$REPORT_DIR" ]; then
-            echo "current_score=0" >> $GITHUB_OUTPUT
-            echo "No PIT report directory found at $REPORT_DIR"
-            exit 0
-          fi
-
-          latest=$(ls -1dt "$REPORT_DIR"/* 2>/dev/null | head -n1 || true)
-          xmlfile="$latest/mutations.xml"
-
-          if [ -f "$xmlfile" ]; then
-            score=$(grep -oP 'mutationCoverage[^>]*value="\K[0-9]+(\.[0-9]+)?' "$xmlfile" || true)
-            if [ -z "$score" ]; then
-              GENERATED=$(grep -oP 'Generated\W+\K[0-9]+' "$xmlfile" | awk '{s+=$1} END{print s+0}')
-              KILLED=$(grep -oP 'Killed\W+\K[0-9]+' "$xmlfile" | awk '{s+=$1} END{print s+0}')
-              if [ "$GENERATED" -gt 0 ]; then
-                score=$((KILLED * 100 / GENERATED))
-              else
-                score=0
-              fi
-            else
-              # round to integer
-              score=$(printf "%.0f" "$score")
-            fi
+          CONSOLE_LOG="pit-output.log"
+          set_score() {
+            score="$1"
+            echo "current_score=$score" >> $GITHUB_OUTPUT
+            echo "$score" > mutation_score.txt
+            echo "Current mutation score: $score%"
+          }
+          if [ -d "$REPORT_DIR" ]; then
+            latest=$(ls -1dt "$REPORT_DIR"/* 2>/dev/null | head -n1 || true)
+            xmlfile="$latest/mutations.xml"
           else
+            xmlfile=""
+          fi
+          score=""
+          if [ -n "$xmlfile" ] && [ -f "$xmlfile" ]; then
+            if command -v xmllint >/dev/null 2>&1; then
+              score=$(xmllint --xpath 'string(//@mutationCoverage)' "$xmlfile" 2>/dev/null || true)
+              # try a couple of alternate locations
+              if [ -z "$score" ]; then
+                score=$(xmllint --xpath 'string(/mutations/@mutationCoverage)' "$xmlfile" 2>/dev/null || true)
+              fi
+              if [ -z "$score" ]; then
+                score=$(xmllint --xpath 'string(/report/@mutationCoverage)' "$xmlfile" 2>/dev/null || true)
+              fi
+            fi
+            if [ -z "$score" ]; then
+              GENERATED=$(grep -o '<mutation\b' "$xmlfile" | wc -l || true)
+              KILLED=$(grep -o 'status="KILLED"' "$xmlfile" | wc -l || true)
+              GENERATED=${GENERATED:-0}
+              KILLED=${KILLED:-0}
+              if [ "$GENERATED" -gt 0 ]; then
+                score=$(( KILLED * 100 / GENERATED ))
+              else
+                score=""
+              fi
+            fi
+          fi
+          if [ -z "$score" ]; then
+            if [ -f "$CONSOLE_LOG" ]; then
+              line=$(grep -Eo 'Generated[[:space:]]+[0-9]+[^\\n]*Killed[[:space:]]+[0-9]+' "$CONSOLE_LOG" | head -n1 || true)
+              if [ -n "$line" ]; then
+                GENERATED=$(echo "$line" | grep -oP 'Generated\s*\K[0-9]+' || echo "0")
+                KILLED=$(echo "$line" | grep -oP 'Killed\s*\K[0-9]+' || echo "0")
+                if [ "$GENERATED" -gt 0 ]; then
+                  score=$(( KILLED * 100 / GENERATED ))
+                else
+                  score=""
+                fi
+              fi
+            fi
+          fi
+          if [ -z "$score" ]; then
             score=0
+          else
+            # ensure integer output (round)
+            score=$(printf "%.0f" "$score")
           fi
 
-          echo "current_score=$score" >> $GITHUB_OUTPUT
-          echo "$score" > mutation_score.txt
-          echo "Current mutation score: $score%"
+          set_score "$score"
 
       - name: Get previous mutation score
         if: matrix.java-version == '24'
@@ -132,6 +161,7 @@ jobs:
             echo "Score précédent: $PREVIOUS%"
             echo "Score actuel: $CURRENT%"
             echo "Différence: -$((PREVIOUS - CURRENT))%"
+            # si tu veux faire échouer le job quand régression:
             exit 1
           else
             echo "Mutation score maintained or improved!"
