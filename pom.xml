@@ -403,10 +403,13 @@
                             <!-- IMPORTANT : on cible le bon package -->
                             <testPlugin>junit5</testPlugin>
                             <targetClasses>
-                            <param>com.graphhopper.navigation.*</param>
+                                <param>com.graphhopper.navigation.*</param>
+                                <param>com.graphhopper.util.*</param>
                             </targetClasses>
+
                             <targetTests>
-                            <param>com.graphhopper.navigation.*</param>
+                                <param>com.graphhopper.navigation.*</param>
+                                <param>com.graphhopper.util.*</param>
                             </targetTests>
 
                             <mutators>
