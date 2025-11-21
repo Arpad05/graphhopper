@@ -71,64 +71,46 @@ jobs:
         run: |
           REPORT_DIRS=("navigation/target/pit-reports" "core/target/pit-reports" "web-api/target/pit-reports" "web-bundle/target/pit-reports" "web/target/pit-reports" "reader-gtfs/target/pit-reports" "tools/target/pit-reports" "map-matching/target/pit-reports")
           CONSOLE_LOG="pit-output.log"
-          set_score() {
-            score="$1"
-            echo "current_score=$score" >> $GITHUB_OUTPUT
-            echo "$score" > mutation_score.txt
-            echo "Current mutation score: $score%"
-          }
-          if [ -d "$REPORT_DIR" ]; then
+
+          TOTAL_GENERATED=0
+          TOTAL_KILLED=0
+
+          for REPORT_DIR in "${REPORT_DIRS[@]}"; do
             latest=$(ls -1dt "$REPORT_DIR"/* 2>/dev/null | head -n1 || true)
             xmlfile="$latest/mutations.xml"
-          else
-            xmlfile=""
-          fi
-          score=""
-          if [ -n "$xmlfile" ] && [ -f "$xmlfile" ]; then
-            if command -v xmllint >/dev/null 2>&1; then
-              score=$(xmllint --xpath 'string(//@mutationCoverage)' "$xmlfile" 2>/dev/null || true)
-              # try a couple of alternate locations
-              if [ -z "$score" ]; then
-                score=$(xmllint --xpath 'string(/mutations/@mutationCoverage)' "$xmlfile" 2>/dev/null || true)
-              fi
-              if [ -z "$score" ]; then
-                score=$(xmllint --xpath 'string(/report/@mutationCoverage)' "$xmlfile" 2>/dev/null || true)
-              fi
-            fi
-            if [ -z "$score" ]; then
+            if [ -f "$xmlfile" ]; then
               GENERATED=$(grep -o '<mutation\b' "$xmlfile" | wc -l || true)
               KILLED=$(grep -o 'status="KILLED"' "$xmlfile" | wc -l || true)
               GENERATED=${GENERATED:-0}
               KILLED=${KILLED:-0}
-              if [ "$GENERATED" -gt 0 ]; then
-                score=$(( KILLED * 100 / GENERATED ))
-              else
-                score=""
-              fi
+              TOTAL_GENERATED=$((TOTAL_GENERATED + GENERATED))
+              TOTAL_KILLED=$((TOTAL_KILLED + KILLED))
             fi
-          fi
-          if [ -z "$score" ]; then
-            if [ -f "$CONSOLE_LOG" ]; then
-              line=$(grep -Eo 'Generated[[:space:]]+[0-9]+[^\\n]*Killed[[:space:]]+[0-9]+' "$CONSOLE_LOG" | head -n1 || true)
-              if [ -n "$line" ]; then
-                GENERATED=$(echo "$line" | grep -oP 'Generated\s*\K[0-9]+' || echo "0")
-                KILLED=$(echo "$line" | grep -oP 'Killed\s*\K[0-9]+' || echo "0")
-                if [ "$GENERATED" -gt 0 ]; then
-                  score=$(( KILLED * 100 / GENERATED ))
-                else
-                  score=""
-                fi
-              fi
+          done
+
+          # fallback if no XMLs found
+          if [ "$TOTAL_GENERATED" -eq 0 ] && [ -f "$CONSOLE_LOG" ]; then
+            line=$(grep -Eo 'Generated[[:space:]]+[0-9]+[^\\n]*Killed[[:space:]]+[0-9]+' "$CONSOLE_LOG" | head -n1 || true)
+            if [ -n "$line" ]; then
+              GENERATED=$(echo "$line" | grep -oP 'Generated\s*\K[0-9]+' || echo "0")
+              KILLED=$(echo "$line" | grep -oP 'Killed\s*\K[0-9]+' || echo "0")
+              TOTAL_GENERATED=$((TOTAL_GENERATED + GENERATED))
+              TOTAL_KILLED=$((TOTAL_KILLED + KILLED))
             fi
-          fi
-          if [ -z "$score" ]; then
-            score=0
-          else
-            # ensure integer output (round)
-            score=$(printf "%.0f" "$score")
           fi
 
-          set_score "$score"
+          if [ "$TOTAL_GENERATED" -gt 0 ]; then
+            SCORE=$(( TOTAL_KILLED * 100 / TOTAL_GENERATED ))
+          else
+            SCORE=0
+          fi
+
+          SCORE=$(printf "%.0f" "$SCORE")
+
+          echo "current_score=$SCORE" >> $GITHUB_OUTPUT
+          echo "$SCORE" > mutation_score.txt
+          echo "Current mutation score: $SCORE% ($TOTAL_KILLED/$TOTAL_GENERATED mutations killed)"
+
 
       - name: Get previous mutation score
         if: matrix.java-version == '24'
