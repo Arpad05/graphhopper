@@ -118,6 +118,7 @@ jobs:
             echo "Mutation score maintained or improved!"
             echo "Previous: $PREVIOUS%"
             echo "Current: $CURRENT%"
+            echo "RICKROLLED=false" >> $GITHUB_OUTPUT
           fi
       
       - name: Save current mutation score
@@ -145,3 +146,7 @@ jobs:
         with:
           name: pit-reports
           path: navigation/target/pit-reports/
+
+      - name: Fail build if rickrolled
+        if: matrix.java-version == '24' && steps.rickroll-check.outputs.RICKROLLED == 'true'
+        run: exit 1
