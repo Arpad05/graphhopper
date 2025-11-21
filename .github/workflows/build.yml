@@ -69,7 +69,7 @@ jobs:
         if: matrix.java-version == '24'
         id: mutation-score
         run: |
-          REPORT_DIR="navigation/target/pit-reports"
+          REPORT_DIRS=("navigation/target/pit-reports" "core/target/pit-reports" "web-api/target/pit-reports" "web-bundle/target/pit-reports" "web/target/pit-reports" "reader-gtfs/target/pit-reports" "tools/target/pit-reports" "map-matching/target/pit-reports")
           CONSOLE_LOG="pit-output.log"
           set_score() {
             score="$1"
