@@ -71,7 +71,7 @@ jobs:
               KILLED=$(echo "$line" | grep -oP 'Killed \K[0-9]+' || echo "0")
               TOTAL_GENERATED=$((TOTAL_GENERATED + GENERATED))
               TOTAL_KILLED=$((TOTAL_KILLED + KILLED))
-            done < <(grep "^>> Generated.*mutations Killed" pit-output.log)
+            done < <(grep ">> Generated.*mutations Killed" pit-output.log)
             
             if [ "$TOTAL_GENERATED" -gt 0 ]; then
               CURRENT_SCORE=$((TOTAL_KILLED * 100 / TOTAL_GENERATED))
