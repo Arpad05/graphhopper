@@ -56,6 +56,48 @@ jobs:
       
       - name: Restore previous mutation score from cache
         if: matrix.java-version == '24'
+        uses: actions/cache/restore@v4
+        with:
+          path: mutation_score.txt
+          key: mutation-score-${{ github.ref }}-dummy
+          restore-keys: |
+            mutation-score-${{ github.ref }}-
+            mutation-score-
+      
+      - uses: actions/setup-java@v4
+        with:
+          java-version: ${{ matrix.java-version }}
+          distribution: temurin
+      
+      - name: Cache Maven artifacts
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2/repository
+          key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
+          restore-keys: |
+            ${{ runner.os }}-maven-
+      
+      - name: Cache node
+        uses: actions/cache@v4
+        with:
+          path: web-bundle/node
+          key: ${{ runner.os }}-node-${{ hashFiles('**/pom.xml') }}
+          restore-keys: |
+            ${{ runner.os}}-node-
+      
+      - name: Cache node_modules
+        uses: actions/cache@v4
+        with:
+          path: web-bundle/node_modules
+          key: ${{ runner.os }}-node-${{ hashFiles('**/pom.xml', '**/package.json') }}
+          restore-keys: |
+            ${{ runner.os}}-node_modules-
+      
+      - name: Build ${{ matrix.java-version }}
+        run: mvn -B clean test
+      
+      - name: Restore previous mutation score from cache
+        if: matrix.java-version == '24'
         uses: actions/cache@v4
         with:
           path: mutation_score.txt
@@ -69,24 +111,29 @@ jobs:
         if: matrix.java-version == '24'
         id: mutation-score
         run: |
-          REPORT_DIRS=("navigation/target/pit-reports" "core/target/pit-reports" "web-api/target/pit-reports" "web-bundle/target/pit-reports" "web/target/pit-reports" "reader-gtfs/target/pit-reports" "tools/target/pit-reports" "map-matching/target/pit-reports")
+          # find all pit report directories produced by modules (handles multiple modules)
+          REPORT_DIRS=$(find . -type d -path '*/target/pit-reports' 2>/dev/null || true)
           CONSOLE_LOG="pit-output.log"
 
           TOTAL_GENERATED=0
           TOTAL_KILLED=0
 
-          for REPORT_DIR in "${REPORT_DIRS[@]}"; do
-            latest=$(ls -1dt "$REPORT_DIR"/* 2>/dev/null | head -n1 || true)
-            xmlfile="$latest/mutations.xml"
-            if [ -f "$xmlfile" ]; then
-              GENERATED=$(grep -o '<mutation\b' "$xmlfile" | wc -l || true)
-              KILLED=$(grep -o 'status="KILLED"' "$xmlfile" | wc -l || true)
-              GENERATED=${GENERATED:-0}
-              KILLED=${KILLED:-0}
-              TOTAL_GENERATED=$((TOTAL_GENERATED + GENERATED))
-              TOTAL_KILLED=$((TOTAL_KILLED + KILLED))
-            fi
-          done
+          if [ -n "$REPORT_DIRS" ]; then
+            # iterate over each found pit-reports directory
+            while IFS= read -r REPORT_DIR; do
+              # pick the latest report run (directories inside target/pit-reports are timestamped)
+              latest=$(ls -1dt "$REPORT_DIR"/* 2>/dev/null | head -n1 || true)
+              xmlfile="$latest/mutations.xml"
+              if [ -f "$xmlfile" ]; then
+                GENERATED=$(grep -o '<mutation\b' "$xmlfile" | wc -l || true)
+                KILLED=$(grep -o 'status="KILLED"' "$xmlfile" | wc -l || true)
+                GENERATED=${GENERATED:-0}
+                KILLED=${KILLED:-0}
+                TOTAL_GENERATED=$((TOTAL_GENERATED + GENERATED))
+                TOTAL_KILLED=$((TOTAL_KILLED + KILLED))
+              fi
+            done <<< "$REPORT_DIRS"
+          fi
 
           # fallback if no XMLs found
           if [ "$TOTAL_GENERATED" -eq 0 ] && [ -f "$CONSOLE_LOG" ]; then
@@ -163,4 +210,4 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: pit-reports
-          path: navigation/target/pit-reports/
+          path: '**/target/pit-reports/**'
