@@ -404,12 +404,16 @@
                             <testPlugin>junit5</testPlugin>
                             <targetClasses>
                                 <param>com.graphhopper.navigation.*</param>
-                                <param>com.graphhopper.util.*</param>
+                                <param>com.graphhopper.core.*</param>
+                                <param>com.graphhopper.web-api.*</param>
+                                <param>com.graphhopper.tools.*</param>
                             </targetClasses>
 
                             <targetTests>
                                 <param>com.graphhopper.navigation.*</param>
-                                <param>com.graphhopper.util.*</param>
+                                <param>com.graphhopper.core.*</param>
+                                <param>com.graphhopper.web-api.*</param>
+                                <param>com.graphhopper.tools.*</param>
                             </targetTests>
 
                             <mutators>
