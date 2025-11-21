@@ -146,6 +146,8 @@ jobs:
         with:
           name: pit-reports
           path: navigation/target/pit-reports/
+          path : web-api/target/pit-reports/
+          path : client-hc/target/pit-reports/
 
       - name: Fail build if rickrolled
         if: matrix.java-version == '24' && steps.rickroll-check.outputs.RICKROLLED == 'true'
