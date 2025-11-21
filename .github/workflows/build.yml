@@ -54,111 +54,40 @@ jobs:
       - name: Build ${{ matrix.java-version }}
         run: mvn -B clean test
       
-      - name: Restore previous mutation score from cache
-        if: matrix.java-version == '24'
-        uses: actions/cache/restore@v4
-        with:
-          path: mutation_score.txt
-          key: mutation-score-${{ github.ref }}-dummy
-          restore-keys: |
-            mutation-score-${{ github.ref }}-
-            mutation-score-
-      
-      - uses: actions/setup-java@v4
-        with:
-          java-version: ${{ matrix.java-version }}
-          distribution: temurin
-      
-      - name: Cache Maven artifacts
-        uses: actions/cache@v4
-        with:
-          path: ~/.m2/repository
-          key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
-          restore-keys: |
-            ${{ runner.os }}-maven-
-      
-      - name: Cache node
-        uses: actions/cache@v4
-        with:
-          path: web-bundle/node
-          key: ${{ runner.os }}-node-${{ hashFiles('**/pom.xml') }}
-          restore-keys: |
-            ${{ runner.os}}-node-
-      
-      - name: Cache node_modules
-        uses: actions/cache@v4
-        with:
-          path: web-bundle/node_modules
-          key: ${{ runner.os }}-node-${{ hashFiles('**/pom.xml', '**/package.json') }}
-          restore-keys: |
-            ${{ runner.os}}-node_modules-
-      
-      - name: Build ${{ matrix.java-version }}
-        run: mvn -B clean test
-      
-      - name: Restore previous mutation score from cache
-        if: matrix.java-version == '24'
-        uses: actions/cache@v4
-        with:
-          path: mutation_score.txt
-          key: mutation-score-${{ github.ref }}
-
       - name: Run PIT Mutation Testing
         if: matrix.java-version == '24'
         run: mvn -P mutation org.pitest:pitest-maven:mutationCoverage | tee pit-output.log
-
-      - name: Extract mutation score (try XML then console)
+      
+      - name: Extract mutation score
         if: matrix.java-version == '24'
         id: mutation-score
         run: |
-          # find all pit report directories produced by modules (handles multiple modules)
-          REPORT_DIRS=$(find . -type d -path '*/target/pit-reports' 2>/dev/null || true)
-          CONSOLE_LOG="pit-output.log"
-
-          TOTAL_GENERATED=0
-          TOTAL_KILLED=0
-
-          if [ -n "$REPORT_DIRS" ]; then
-            # iterate over each found pit-reports directory
-            while IFS= read -r REPORT_DIR; do
-              # pick the latest report run (directories inside target/pit-reports are timestamped)
-              latest=$(ls -1dt "$REPORT_DIR"/* 2>/dev/null | head -n1 || true)
-              xmlfile="$latest/mutations.xml"
-              if [ -f "$xmlfile" ]; then
-                GENERATED=$(grep -o '<mutation\b' "$xmlfile" | wc -l || true)
-                KILLED=$(grep -o 'status="KILLED"' "$xmlfile" | wc -l || true)
-                GENERATED=${GENERATED:-0}
-                KILLED=${KILLED:-0}
-                TOTAL_GENERATED=$((TOTAL_GENERATED + GENERATED))
-                TOTAL_KILLED=$((TOTAL_KILLED + KILLED))
-              fi
-            done <<< "$REPORT_DIRS"
-          fi
-
-          # fallback if no XMLs found
-          if [ "$TOTAL_GENERATED" -eq 0 ] && [ -f "$CONSOLE_LOG" ]; then
-            line=$(grep -Eo 'Generated[[:space:]]+[0-9]+[^\\n]*Killed[[:space:]]+[0-9]+' "$CONSOLE_LOG" | head -n1 || true)
-            if [ -n "$line" ]; then
-              GENERATED=$(echo "$line" | grep -oP 'Generated\s*\K[0-9]+' || echo "0")
-              KILLED=$(echo "$line" | grep -oP 'Killed\s*\K[0-9]+' || echo "0")
+          if [ -f "pit-output.log" ]; then
+            TOTAL_GENERATED=0
+            TOTAL_KILLED=0
+            
+            while IFS= read -r line; do
+              GENERATED=$(echo "$line" | grep -oP 'Generated \K[0-9]+' || echo "0")
+              KILLED=$(echo "$line" | grep -oP 'Killed \K[0-9]+' || echo "0")
               TOTAL_GENERATED=$((TOTAL_GENERATED + GENERATED))
               TOTAL_KILLED=$((TOTAL_KILLED + KILLED))
+              echo "Found: Generated=$GENERATED, Killed=$KILLED (Running total: $TOTAL_KILLED/$TOTAL_GENERATED)"
+            done < <(grep ">> Generated.*mutations Killed" pit-output.log)
+            
+            if [ "$TOTAL_GENERATED" -gt 0 ]; then
+              CURRENT_SCORE=$((TOTAL_KILLED * 100 / TOTAL_GENERATED))
+            else
+              CURRENT_SCORE=0
             fi
-          fi
-
-          if [ "$TOTAL_GENERATED" -gt 0 ]; then
-            SCORE=$(( TOTAL_KILLED * 100 / TOTAL_GENERATED ))
+            
+            echo "current_score=$CURRENT_SCORE" >> $GITHUB_OUTPUT
+            echo "Global Mutation Score: $CURRENT_SCORE%"
+            echo "Mutations killed: $TOTAL_KILLED / $TOTAL_GENERATED"
           else
-            SCORE=0
+            echo "current_score=0" >> $GITHUB_OUTPUT
+            echo "No PIT output found"
           fi
-
-          SCORE=$(printf "%.0f" "$SCORE")
-
-          echo "current_score=$SCORE" >> $GITHUB_OUTPUT
-          echo "$SCORE" > mutation_score.txt
-          echo "Current mutation score: $SCORE% ($TOTAL_KILLED/$TOTAL_GENERATED mutations killed)"
-
-
+      
       - name: Get previous mutation score
         if: matrix.java-version == '24'
         id: previous-score
@@ -166,23 +95,18 @@ jobs:
           PREVIOUS_SCORE=$(cat mutation_score.txt 2>/dev/null || echo "0")
           echo "previous_score=$PREVIOUS_SCORE" >> $GITHUB_OUTPUT
           echo "Previous mutation score: $PREVIOUS_SCORE%"
-
+      
       - name: Check mutation score and rickroll if lower
         if: matrix.java-version == '24'
         run: |
           CURRENT=${{ steps.mutation-score.outputs.current_score }}
           PREVIOUS=${{ steps.previous-score.outputs.previous_score }}
-
-          CURRENT=${CURRENT:-0}
-          PREVIOUS=${PREVIOUS:-0}
-
-          echo "Previous: $PREVIOUS%, Current: $CURRENT%"
-
+          
           if [ "$CURRENT" -lt "$PREVIOUS" ]; then
             echo "Le score de mutation a baissé !!"
             echo "Never gonna give you up"
             echo "Never gonna let you down"
-            echo "Never gonna run and leave you dry"
+            echo "Never gonna fail the tests and desert you"
             echo "Never gonna make you cry"
             echo "Never gonna say 'Good try'"
             echo "Never gonna tell a lie and compile for you"
@@ -190,24 +114,34 @@ jobs:
             echo "Score précédent: $PREVIOUS%"
             echo "Score actuel: $CURRENT%"
             echo "Différence: -$((PREVIOUS - CURRENT))%"
-            # si tu veux faire échouer le job quand régression:
-            exit 1
           else
             echo "Mutation score maintained or improved!"
             echo "Previous: $PREVIOUS%"
             echo "Current: $CURRENT%"
           fi
-
+      
+      - name: Save current mutation score
+        if: matrix.java-version == '24'
+        run: |
+          echo "${{ steps.mutation-score.outputs.current_score }}" > mutation_score.txt
+      
       - name: Cache mutation score for next run
         if: matrix.java-version == '24'
-        uses: actions/cache@v4
+        uses: actions/cache/save@v4
         with:
           path: mutation_score.txt
-          key: mutation-score-${{ github.ref }}
-
+          key: mutation-score-${{ github.ref }}-${{ github.sha }}
+      
+      - name: Upload mutation score
+        if: matrix.java-version == '24'
+        uses: actions/upload-artifact@v4
+        with:
+          name: mutation-score
+          path: mutation_score.txt
+      
       - name: Upload PIT reports
         if: matrix.java-version == '24'
         uses: actions/upload-artifact@v4
         with:
           name: pit-reports
-          path: '**/target/pit-reports/**'
+          path: navigation/target/pit-reports/
